@@ -3,7 +3,16 @@
 #include "arduino_secrets.h"
 #include <utility/wifi_drv.h>
 
-int lControl =  6; //Digital pin that LED is connected to on the MKR1000
+// Define sensors and motors
+int waterLevel = A0;
+int waterMoisture = A1;
+int light = A2;
+int ledR = A3;
+int ledG = A4;
+int ledB = A5;
+int pump =  10; 
+
+
 char ssid[] = SECRET_SSID;      // your network SSID (name)
 char pass[] = SECRET_PASS;   // your network password
 int keyIndex = 0;                 // your network key Index number (needed only for WEP)
@@ -13,60 +22,41 @@ int status = WL_IDLE_STATUS; //status of wifi
 WiFiServer server(80); //declare server object and spedify port, 80 is port used for internet
 
 void setup() {
-  //Uncomment serial for debugging and to see details of WiFi connection
- // Serial.begin(9600);
- // while (!Serial) {
-     // wait for serial port to connect. Needed for native USB port only
-//  }
-
-  // check for the presence of the shield:
-  if (WiFi.status() == WL_NO_SHIELD) {
-  //  Serial.println("WiFi shield not present");
-    // don't continue:
-    while (true);
-  }
-
-  // attempt to connect to Wifi network:
+  pinMode(10, OUTPUT);
   while ( status != WL_CONNECTED) {
- //   Serial.print("Attempting to connect to SSID: ");
- //   Serial.println(ssid);
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
     status = WiFi.begin(ssid, pass);
     // wait 10 seconds for connection:
     delay(10000);
   }
   server.begin();
-  // you're connected now, so print out the status:
- printWifiStatus();
+  printWifiStatus();
 }
 
-
 void loop() {
-  WiFiClient client = server.available();   // listen for incoming clients
+  // Serial.println(String(analogRead(A0)));
+  WiFiClient client = server.available();
 
-  if (client) {                             // if you get a client,
-   // Serial.println("new client");           // print a message out the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
+  if (client) {                             
+    String currentLine = "";
     while (client.connected()) {            // loop while the client's connected
       if (client.available()) {             // if there's bytes to read from the client,
         char c = client.read();             // read a byte, then
        // Serial.write(c);                    // print it out the serial monitor
         if (c == '\n') {                    // if the byte is a newline character
-
           // if the current line is blank, you got two newline characters in a row.
           // that's the end of the client HTTP request, so send a response:
           if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
+            String var = String(analogRead(A0));
             client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
+            client.println("Content-Type: application/json;charset=utf-8");
+            client.println("Server: Arduino");
+            client.println("Connection: close");
             client.println();
-            client.print("Value at A0 is ");
-            client.print(analogRead(A0));
-            client.print("<br>");
-            // The HTTP response ends with another blank line:
+            client.println("[{\"Light Level\":" + String(analogRead(A0)) + " }]");
             client.println();
-            // break out of the while loop:
             break;
           }
           else {      // if you got a newline, then clear currentLine:
@@ -78,17 +68,38 @@ void loop() {
         }
 
         // Check to see if the client request was "GET /H" or "GET /L":
-        if (currentLine.endsWith("GET /H")) {
-          WiFiDrv::analogWrite(25, 50);
+        if (currentLine.endsWith("GET /G")) {
+          analogWrite(A3, 0);
+          analogWrite(A4, 50);
+          analogWrite(A5, 0);
+          WiFiDrv::analogWrite(25, 0);
           WiFiDrv::analogWrite(26, 50);
           WiFiDrv::analogWrite(27, 0);
           // digitalWrite(lControl, HIGH);               // GET /H turns the LED on
         }
-        if (currentLine.endsWith("GET /L")) {
-          WiFiDrv::analogWrite(25, 0);
+        if (currentLine.endsWith("GET /P")) {
+          analogWrite(A3, 50);
+          analogWrite(A4, 0);
+          analogWrite(A5, 50);
+          WiFiDrv::analogWrite(25, 50);
+          WiFiDrv::analogWrite(26, 0);
+          WiFiDrv::analogWrite(27, 50);
+          // digitalWrite(lControl, LOW);                // GET /L turns the LED off
+        }
+        if (currentLine.endsWith("GET /R")) {
+          analogWrite(A3, 50);
+          analogWrite(A4, 0);
+          analogWrite(A5, 0);
+          WiFiDrv::analogWrite(25, 50);
           WiFiDrv::analogWrite(26, 0);
           WiFiDrv::analogWrite(27, 0);
           // digitalWrite(lControl, LOW);                // GET /L turns the LED off
+        }
+        if (currentLine.endsWith("GET /H")) {
+          digitalWrite(10, HIGH);           
+        }
+        if (currentLine.endsWith("GET /L")) {
+          digitalWrite(10, LOW);           
         }
       }
     }
