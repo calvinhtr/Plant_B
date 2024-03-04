@@ -89,23 +89,6 @@ void loop() {
         char c = client.read();             // read a byte, then
        // Serial.write(c);                    // print it out the serial monitor
         if (c == '\n') {                    // if the byte is a newline character
-
-          // Run all the stuff that needs to be checked at the end (variable input)
-          // if (countNewline == 1) {
-          //   if (currentLine.indexOf("/pumpVar") > 0) {
-          //     int index = currentLine.indexOf("Var/");
-          //     int indexHTTP = currentLine.indexOf("HTTP/1.1");
-          //     Serial.println(currentLine.substring(index + 4, indexHTTP));
-          //     // num = stringValue.substring(index + 4).toInt();
-          //     // pumpMl()
-          //   }
-          //   Serial.println("Resetting count");
-          //   countNewline = 0;
-          // }
-          // else if (countNewline == 0) {
-          //   countNewline = countNewline + 1;
-          //   Serial.println("Incrementing count");
-          // }
           // if the current line is blank, you got two newline characters in a row.
           // that's the end of the client HTTP request, so send a response:  
           if (currentLine.length() == 0) {
