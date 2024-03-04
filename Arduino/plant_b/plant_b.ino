@@ -3,27 +3,33 @@
 #include "arduino_secrets.h"
 #include <utility/wifi_drv.h>
 #include <FastLED.h>
+#include <RTCZero.h>
 
 // Define sensors and motors
 int waterLevel = A5;
 int waterMoisture = A4;
 int waterLevelActivate = 10;
+int waterMoistActivate = 14;
 int lightSensor = A6;
 int pump =  7; 
 int val = 0;
+int moistureVal = 0;
+int dry = 794;
+int wet = 305;
+int countNewline = 0;
 
-#define LED_PIN 5
-#define NUM_LEDS 20
+#define LED_PIN 6
+#define NUM_LEDS 9
 
 CRGB leds[NUM_LEDS];
 
+RTCZero rtc;
 
 char ssid[] = SECRET_SSID;      // your network SSID (name)
 char pass[] = SECRET_PASS;   // your network password
 int keyIndex = 0;                 // your network key Index number (needed only for WEP)
 
 int status = WL_IDLE_STATUS; //status of wifi
-
 
 bool autoVar = false;
 
@@ -32,7 +38,7 @@ WiFiServer server(80); //declare server object and spedify port, 80 is port used
 void setup() {
   // Initialize pump output
   pinMode(pump, OUTPUT);
-  pinMode(waterLevelActivate, OUTPUT);
+  pinMode(waterMoistActivate, OUTPUT);
 
   // Initialize pump to off
   digitalWrite(pump, HIGH);
@@ -48,7 +54,28 @@ void setup() {
   }
   server.begin();
   printWifiStatus();
-  digitalWrite(waterLevelActivate, LOW);
+  digitalWrite(waterMoistActivate, LOW);
+
+  // Get time
+  rtc.begin();
+
+  unsigned long epoch;
+  int numberOfTries = 0, maxTries = 6;
+  do {
+    epoch = WiFi.getTime();
+    numberOfTries++;
+  } while ((epoch == 0) && (numberOfTries < maxTries));
+
+  if (numberOfTries == maxTries) {
+    Serial.print("NTP unreachable!!");
+    while (1);
+  }
+
+  else {
+    Serial.print("Epoch received: ");
+    Serial.println(epoch);
+    rtc.setEpoch(epoch);
+  }
 }
 
 void loop() {
@@ -62,6 +89,23 @@ void loop() {
         char c = client.read();             // read a byte, then
        // Serial.write(c);                    // print it out the serial monitor
         if (c == '\n') {                    // if the byte is a newline character
+
+          // Run all the stuff that needs to be checked at the end (variable input)
+          // if (countNewline == 1) {
+          //   if (currentLine.indexOf("/pumpVar") > 0) {
+          //     int index = currentLine.indexOf("Var/");
+          //     int indexHTTP = currentLine.indexOf("HTTP/1.1");
+          //     Serial.println(currentLine.substring(index + 4, indexHTTP));
+          //     // num = stringValue.substring(index + 4).toInt();
+          //     // pumpMl()
+          //   }
+          //   Serial.println("Resetting count");
+          //   countNewline = 0;
+          // }
+          // else if (countNewline == 0) {
+          //   countNewline = countNewline + 1;
+          //   Serial.println("Incrementing count");
+          // }
           // if the current line is blank, you got two newline characters in a row.
           // that's the end of the client HTTP request, so send a response:  
           if (currentLine.length() == 0) {
@@ -70,27 +114,41 @@ void loop() {
             client.println("Server: Arduino");
             client.println("Connection: close");
             client.println();
-            client.println("[{\"Light Level\":" + String(analogRead(lightSensor)) + " }]");
+            client.println("[{\"Light Level\": " + String(analogRead(lightSensor)) + ", \"Moisture Level\": " + String(readMoisture()) + " }]");
             client.println();
             break;
           }
-          else {      // if you got a newline, then clear currentLine:
+          else { 
+            // Put all code to check at end here
+            if (currentLine.startsWith("Referer")) {
+              if (currentLine.indexOf("/printText") > 0) {
+                int index = currentLine.indexOf("ext/");
+                int indexHTTP = currentLine.indexOf("HTTP/1.1");
+                Serial.println(currentLine.substring(index + 4, indexHTTP));
+              }
+              else if (currentLine.indexOf("/pumpVar") > 0) {
+                int index = currentLine.indexOf("Var/");
+                int indexHTTP = currentLine.indexOf("HTTP/1.1");
+                int pumpVal = currentLine.substring(index + 4, indexHTTP).toInt();
+                pumpMl(pumpVal);
+              }
+            }
+            // Clear on newline because info is irrelevant
             currentLine = "";
-            // Serial.println("c is nothing, currentline cleared"); 
           }
         }
         else if (c != '\r') {    // if you got anything else but a carriage return character,
           currentLine += c;      // add it to the end of the currentLine
-          // Serial.println("c is slash n"); 
         }
-
-        // Check to see if the client request was "GET /H" or "GET /L":
+        // Define other endpoints
+        if (currentLine.endsWith("GET /motorOff")) {
+          digitalWrite(pump, HIGH);
+        }
         if (currentLine.endsWith("GET /motorOff")) {
           digitalWrite(pump, HIGH);
         }
         if (currentLine.endsWith("GET /motorOn")) {
           digitalWrite(pump, LOW);
-          // Serial.println("motor is onning");
         }
         if (currentLine.endsWith("GET /ledR")) {
           FastLED.addLeds<WS2812, LED_PIN, GRB> (leds, NUM_LEDS);
@@ -125,6 +183,7 @@ void loop() {
         }
         if (currentLine.endsWith("GET /autoOff")) {
           autoVar = false;
+          // Turn off LEDs and pump 
           FastLED.addLeds<WS2812, LED_PIN, GRB> (leds, NUM_LEDS);
           for (int i = 0; i <= NUM_LEDS-1; i++) {
             leds[i] = CRGB(0,0,0);
@@ -156,7 +215,7 @@ void loop() {
       }
     }
     FastLED.show();
-    if (moistureReading < 100) {
+    if (moistureReading < 50) {
       digitalWrite(pump, LOW);
     }
     else {
@@ -165,6 +224,11 @@ void loop() {
   }
 }
 
+void pumpMl(int ml) {
+  digitalWrite(pump, LOW);
+  delay(ml*32);
+  digitalWrite(pump, HIGH);
+}
 
 void printWifiStatus() {
   // print the SSID of the network you're attached to:
@@ -184,10 +248,20 @@ void printWifiStatus() {
 }
 
 //This is a function used to get the reading
-int readMoisture() {
+int readWaterLevel() {
 	digitalWrite(waterLevelActivate, HIGH);	// Turn the sensor ON
 	delay(10);							// wait 10 milliseconds
 	val = analogRead(waterLevel);		// Read the analog value form sensor
 	digitalWrite(waterLevelActivate, LOW);		// Turn the sensor OFF
 	return val;							// send current reading
+}
+
+int readMoisture() {
+	digitalWrite(waterMoistActivate, HIGH);	// Turn the sensor ON
+	delay(10);							// wait 10 milliseconds
+	moistureVal = analogRead(waterMoisture);		// Read the analog value form sensor
+	int percentageHumidity = map(moistureVal, wet, dry, 100, 0); //Convert reading into percentage
+  
+  digitalWrite(waterLevelActivate, LOW);		// Turn the sensor OFF
+	return percentageHumidity;							// send current reading
 }
