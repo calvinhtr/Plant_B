@@ -139,19 +139,23 @@ String comm_val;
 
 void loop() {
   // In case device disconnects from WiFi
-  while ( status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
-    // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-    status = WiFi.begin(ssid, pass);
-    // wait 10 seconds for connection:
-    delay(10000);
+  if (status != WL_CONNECTED) {
+    while (status != WL_CONNECTED) {
+      Serial.print("Attempting to connect to SSID: ");
+      Serial.println(ssid);
+      // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+      status = WiFi.begin(ssid, pass);
+      // wait 10 seconds for connection:
+      delay(10000);
+    }
+    server.begin();
+    printWifiStatus();
   }
-
+  
   WiFiClient client = server.available();
 
   // Read inputs from user first
-  if(Serial.available()){
+  if (Serial.available()) {
     // Parse input command
     input = Serial.readStringUntil('\n');
     split = input.indexOf(' ');
@@ -184,13 +188,15 @@ void loop() {
           // if the current line is blank, you got two newline characters in a row.
           // that's the end of the client HTTP request, so send a response:  
           if (currentLine.length() == 0) {
-            // client.println("HTTP/1.1 200 OK");
-            // client.println("Content-Type: application/json;charset=utf-8");
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-Type: application/json");
+            client.println("Access-Control-Allow-Origin: *");
+            client.println("");
             // client.println("Server: Arduino");
             // client.println("Connection: close");
             // client.println();
-            client.println("{\"Light Level\": " + String(analogRead(lightSensor)) + ", \"Moisture Level\": " + String(readMoisture()) + " }");
-            // client.println();
+            client.println("{\"Light Level\": " + String(analogRead(lightSensor)) + ", \"Moisture Level\": " + String(readMoisture()) + "}");
+            client.println();
             break;
           }
           else { 
